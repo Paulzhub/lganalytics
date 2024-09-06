@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Life Group Analytics</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            font-family: Arial, sans-serif;
+
+            background-image: 
+            linear-gradient(
+            rgba(0, 0, 0, 0.6), 
+            rgba(0, 0, 0, 0.6)
+            ),
+            url("Bible Blue BG.jpg");
+            background-repeat: no-repeat;
+            background-attachment: fixed;
+            background-size: 100% 100%;
+            overflow: hidden;
+            position:relative;
+            width:100%;
+        }
+        .dashboard {   
+            width: 60%;
+            max-width: 60%;
+            display: flex;
+            flex-wrap: wrap;
+            flex-shrink: 0;
+            overflow: hidden;           
+            margin: 20px;
+        }
+        .filters {
+            display: flex;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            margin-bottom: 20px;
+            gap: 1rem 1rem;
+        }
+        .filters select, .filters input {
+            padding: 10px;
+            font-size: 16px;
+        }
+        .filters label {
+            color: whitesmoke;
+        }
+        .chart-container {
+            width: 100%;
+            height: 60vh;
+            background-color: black;
+            display: flex;
+            flex-wrap: wrap;
+        }
+        .selected-metric {
+            color: white;
+            text-align: center;
+            font-size: 18px;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="dashboard">
+    <div class="filters">
+        <div>
+            <label for="startDate">Start Date:</label>
+            <input type="date" id="startDate" placeholder="Start Date">
+        </div>
+        <div>
+            <label for="endDate">End Date:</label>
+            <input type="date" id="endDate" placeholder="End Date">
+        </div>
+        <div>
+            <label for="lifeGroup">Life Group:</label>
+            <select id="lifeGroup">
+                <option value="Aao Sangatee Kare">Aao Sangatee Kare</option>
+                <option value="Better Together">Better Together</option>
+                <option value="Graceful Grays">Graceful Grays</option>
+                <option value="Immanuel">Immanuel</option>
+                <option value="Obeying My God">Obeying My God</option>
+                <option value="Pathfinders">Pathfinders</option>
+                <option value="Tea & Testament">Tea & Testament</option>
+                <option value="True Men of God">True Men of God</option>
+                <option value="Dr. Daph's All India LG">Dr. Daph's All India LG</option>
+                <option value="All">All</option>
+            </select>
+        </div>
+        <br>
+        <div>
+            <label for="metric">Select metric:</label>
+            <select id="metric" class="select-metric">
+                <option value="Edification">Edification</option>
+                <option value="Affection">Affection</option>
+                <option value="Gospel Outreach">Gospel Outreach</option>
+                <option value="Loyalty">Loyalty</option>
+                <option value="Excellence">Excellence</option>
+            </select>
+        </div>
+        <button id="searchButton">Search</button>
+    </div>
+
+    <div class="chart-container">
+        <!-- Canvas for filtered data bar chart -->
+        <canvas id="chartFiltered"></canvas>
+    </div>
+    <!-- Display selected metric -->
+    <div id="selectedMetric" class="selected-metric"></div>
+</div>
+
+<script>
+    // Replace with your Google Sheets API key
+    const API_KEY = 'AIzaSyAbhPfIcli0AsILnaAon3X_qWujfpLkIEs';
+    // Replace with your Google Sheets document ID
+    const SPREADSHEET_ID = '1z2Mtay8tbcbwj99SbvhdXM0S6dfC9SGxXa8JQhTbKtE';
+    // Specify the range of data to fetch (in this case, entire sheet data from A to Z)
+    const RANGE = 'Form Responses 1!A:AA';
+
+    let data; // Holds data fetched from Google Sheets
+    let chartInstanceFiltered; // Hold the chart instance for filtered data
+
+    // Fetch data from Google Sheets
+    async function loadGoogleSheetData() {
+        const url = `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${RANGE}?key=${API_KEY}`;
+        try {
+            const response = await fetch(url);
+            const sheetData = await response.json();
+            if (sheetData.values && sheetData.values.length > 0) {
+                data = sheetData.values;
+                console.log("Data loaded successfully", data); // Debugging data load
+            } else {
+                console.warn("No data found in the Google Sheet.");
+            }
+        } catch (error) {
+            console.error("Error fetching data from Google Sheets:", error);
+        }
+    }
+
+    // Filter data by date range
+    function filterByDateRange(data, startDate, endDate) {
+        return data.filter(row => {
+            const rowDate = new Date(row[0]);
+            return rowDate >= new Date(startDate) && rowDate <= new Date(endDate);
+        });
+    }
+
+    // Filter data by selected life group
+    function filterByLifeGroup(data, lifeGroup) {
+        return lifeGroup === 'All' ? data : data.filter(row => row[1] === lifeGroup);
+    }
+
+    // Get selected column data based on the selected metric
+    function getColumnData(filteredData, metric) {
+        let startIndex, endIndex;
+
+        // Define column ranges for each metric
+        switch (metric) {
+            case 'Edification':
+                startIndex = 2; endIndex = 6; break; // Columns C to G
+            case 'Affection':
+                startIndex = 7; endIndex = 11; break; // Columns H to L
+            case 'Gospel Outreach':
+                startIndex = 12; endIndex = 16; break; // Columns M to Q
+            case 'Loyalty':
+                startIndex = 17; endIndex = 21; break; // Columns R to V
+            case 'Excellence':
+                startIndex = 22; endIndex = 26; break; // Columns W to AA
+        }
+
+        // Extract the header row (first row)
+        const headers = data[0].slice(startIndex, endIndex + 1);
+
+        // Extract the data for the selected columns
+        const columnData = filteredData.map(row => row.slice(startIndex, endIndex + 1));
+
+        return { headers, columnData };
+    }
+
+    // Generate grouped/multibar chart for filtered data
+    function generateBarChart({ headers, columnData }, metric) {
+        // Collect distinct values across all columns for the X-axis
+        const distinctValues = new Set();
+        columnData.forEach(col => col.forEach(value => distinctValues.add(value)));
+        const xAxisLabels = Array.from(distinctValues); // Distinct values across all columns
+
+        // Create datasets for each column
+        const datasets = headers.map((header, columnIndex) => {
+            const frequencies = {};
+            
+            // Calculate frequencies of values for each column
+            xAxisLabels.forEach(label => {
+                frequencies[label] = columnData.filter(row => row[columnIndex] === label).length;
+            });
+
+            return {
+                label: header, // Column name from the first row
+                data: xAxisLabels.map(label => frequencies[label]), // Frequency data for this column
+                backgroundColor: `rgba(${Math.floor(Math.random() * 255)}, ${Math.floor(Math.random() * 255)}, ${Math.floor(Math.random() * 255)}, 0.5)`,
+                borderColor: `rgba(${Math.floor(Math.random() * 255)}, ${Math.floor(Math.random() * 255)}, ${Math.floor(Math.random() * 255)}, 1)`,
+                borderWidth: 1
+            };
+        });
+
+        // Create the grouped bar chart
+        const ctx = document.getElementById('chartFiltered').getContext('2d');
+
+        // Destroy the previous chart instance if it exists
+        if (chartInstanceFiltered) {
+            chartInstanceFiltered.destroy();
+        }
+
+        // Generate the grouped bar chart
+        chartInstanceFiltered = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: xAxisLabels, // X-axis labels: distinct values across all columns
+                datasets: datasets // Dataset for each column
+            },
+            options: {
+                scales: {
+                    x: {
+                        beginAtZero: true
+                    },
+                    y: {
+                        title: {
+                            display: true,
+                            text: 'Frequency'
+                        }
+                    }
+                },
+                responsive: true
+            }
+        });
+
+        // Display selected metric below the chart
+        const metricDisplay = document.getElementById('selectedMetric');
+        metricDisplay.innerText = `EAGLE Metric: ${metric}`;
+        metricDisplay.style.textAlign = 'center';
+    }
+
+    // Handle the Search Button Click
+    document.getElementById('searchButton').addEventListener('click', () => {
+        const startDate = document.getElementById('startDate').value;
+        const endDate = document.getElementById('endDate').value;
+        const lifeGroup = document.getElementById('lifeGroup').value;
+        const selectedMetric = document.getElementById('metric').value;
+
+        if (!startDate || !endDate) {
+            alert("Please select a valid start and end date.");
+            return;
+        }
+
+        const filteredData = filterByLifeGroup(filterByDateRange(data, startDate, endDate), lifeGroup);
+        const columnData = getColumnData(filteredData, selectedMetric);
+        console.log("Filtered Column Data:", columnData); // Debugging the filtered data
+
+        generateBarChart(columnData, selectedMetric); // Generate the bar chart
+    });
+
+    // Initialize by loading data
+    loadGoogleSheetData();
+
+</script>
+
+</body>
+</html>
